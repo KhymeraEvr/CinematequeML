@@ -17,6 +17,16 @@ crewLen = 7
 genresLen = 19
 companiesLen = 48
 
+# Training parameters.
+learning_rate = 0.001
+training_steps = 2
+batch_size = 256
+display_step = 100
+
+# Network parameters.
+n_hidden_1 = 128 # 1st layer number of neurons.
+n_hidden_2 = 256 # 2nd layer number of neurons.
+
 class MovieData:
     pass
 
@@ -62,37 +72,39 @@ def sumUpCrewData(inPath, files, releaseDate):
 def processMovieCsv(names):
     movies = []
     for name in names:
-        movData = pd.read_csv(name, header=None)
-        actors = movData[3][0].split(';')
-        actorsPop = movData[4][0].split(';')
-        crew = movData[5][0].split(';')
-        crewPop = movData[6][0].split(';')
-        budget = movData[8][0]
-        genreFlags = movData[10][0].split(';')
-        companiesFlags = movData[11][0].split(';')
-        target = movData[13][0]
+        try:
+            movData = pd.read_csv(name, header=None)
+            actors = movData[3][0].split(';')
+            actorsPop = movData[4][0].split(';')
+            crew = movData[5][0].split(';')
+            crewPop = movData[6][0].split(';')
+            budget = movData[8][0]
+            genreFlags = movData[10][0].split(';')
+            companiesFlags = movData[11][0].split(';')
+            target = movData[13][0]
 
-        releaseDate = datetime.datetime.strptime(movData[12][0], '%Y-%m-%d')
-        actorsAv = sumUpCrewData('../ActorsCsvs',actors, releaseDate)
+            releaseDate = datetime.datetime.strptime(movData[12][0], '%Y-%m-%d')
+            actorsAv = sumUpCrewData('../ActorsCsvs',actors, releaseDate)
 
-        movieData = MovieData();
-        setattr(movieData, 'target', target)
-        setattr(movieData, 'budget', budget)
-        for i in range (0, actorsLen):
-            setattr(movieData, 'actorAv'+ str(i), actorsAv[i])
-        for i in range(0, actorsLen):
-            setattr(movieData, 'actorPo'+ str(i), float(actorsPop[i]))
-        crewAv = sumUpCrewData('../CrewCsvs', crew, releaseDate)
-        for i in range (0, crewLen):
-            setattr(movieData, 'crewAv'+ str(i), crewAv[i])
-        for i in range(0, crewLen):
-            setattr(movieData, 'crewPo' + str(i), float(crewPop[i]))
-        for i in range(0, genresLen):
-            setattr(movieData, 'genre' + str(i), float(genreFlags[i]))
-        for i in range(0, companiesLen):
-            setattr(movieData, 'comp' + str(i), float(companiesFlags[i]))
+            movieData = MovieData();
+            setattr(movieData, 'target', int(target * 10) )
+            # setattr(movieData, 'budget', budget)
+            for i in range (0, actorsLen):
+                setattr(movieData, 'actorAv'+ str(i), actorsAv[i])
+            for i in range(0, actorsLen):
+                setattr(movieData, 'actorPo'+ str(i), float(actorsPop[i]))
+            crewAv = sumUpCrewData('../CrewCsvs', crew, releaseDate)
+            for i in range (0, crewLen):
+                setattr(movieData, 'crewAv'+ str(i), crewAv[i])
+            for i in range(0, crewLen):
+                setattr(movieData, 'crewPo' + str(i), float(crewPop[i]))
+           # for i in range(0, genresLen):
+            #    setattr(movieData, 'genre' + str(i), float(genreFlags[i]))
+            #for i in range(0, companiesLen):
+             #   setattr(movieData, 'comp' + str(i), float(companiesFlags[i]))
 
-        movies.append(movieData)
+            movies.append(movieData)
+        except: continue
     return movies
 
 def createTrainData():
@@ -110,47 +122,44 @@ def df_to_dataset(dataframe, shuffle=True, batch_size=32):
   dataframe = dataframe.copy()
   labels = dataframe.pop('target')
   ds = tf.data.Dataset.from_tensor_slices((dict(dataframe), labels))
-  if shuffle:
-    ds = ds.shuffle(buffer_size=len(dataframe))
-  ds = ds.batch(batch_size)
+  ds = ds.repeat().shuffle(5000).batch(batch_size).prefetch(1)
   return ds
 
+def make_input_fn(data_df, label_df, num_epochs=10, shuffle=True, batch_size=32):
+  def input_function():  # inner function, this will be returned
+    ds = tf.data.Dataset.from_tensor_slices((dict(data_df), label_df))  # create tf.data.Dataset object with data and its label
+    if shuffle:
+      ds = ds.shuffle(1000)  # randomize order of data
+    ds = ds.batch(batch_size).repeat(num_epochs)  # split dataset into batches of 32 and repeat process for number of epochs
+    return ds  # return a batch of the dataset
+  return input_function  # return a function object for use
 
 #createTrainData();
 dataframe = pd.read_csv("combined_csv.csv")
 dataframe.head()
-train, test = train_test_split(dataframe, test_size=0.2)
-train, val = train_test_split(train, test_size=0.2)
-print(len(train), 'train examples')
-print(len(val), 'validation examples')
-print(len(test), 'test examples')
+train, test = train_test_split(dataframe)
+y_train = train.pop('target')
+y_eval = test.pop('target')
 
-batch_size = 32
-train_ds = df_to_dataset(train, batch_size=batch_size)
-val_ds = df_to_dataset(val, shuffle=False, batch_size=batch_size)
-test_ds = df_to_dataset(test, shuffle=False, batch_size=batch_size)
+#train.actorAv0.hist(bins=20)
+#y_train.hist(bins=20)
+NUMERIC_COLUMNS = ['actorAv0' ,'actorAv1' ,'actorAv2' ,'actorAv3' ,'actorAv4' ,'actorAv5' ,'actorAv6' ,'actorAv7' ,'actorAv8' ,'actorAv9' ,'actorPo0' ,'actorPo1' ,'actorPo2' ,'actorPo3' ,'actorPo4' ,'actorPo5' ,'actorPo6' ,'actorPo7' ,'actorPo8' ,'actorPo9' ,'crewAv0' ,'crewAv1' ,'crewAv2' ,'crewAv3' ,'crewAv4' ,'crewAv5' ,'crewAv6' ,'crewPo0' ,'crewPo1' ,'crewPo2' ,'crewPo3' ,'crewPo4' ,'crewPo5' ,'crewPo6']
 
 feature_columns = []
-headers = list(dataframe.columns)
-headers.remove('target')
-for header in headers:
-    print(header)
-    feature_columns.append(feature_column.numeric_column(header))
 
+for feature_name in NUMERIC_COLUMNS:
+  feature_columns.append(tf.feature_column.numeric_column(feature_name, dtype=tf.float32))
 
-feature_layer = tf.keras.layers.DenseFeatures(feature_columns)
+print(feature_columns)
 
-model = tf.keras.Sequential([
-  feature_layer,
-  layers.Dense(128, activation='relu', dtype='float64'),
-  layers.Dense(128, activation='relu', dtype='float64'),
-  layers.Dense(1)
-])
+train_input_fn = make_input_fn(train, y_train)  # here we will call the input_function that was returned to us to get a dataset object we can feed to the model
+eval_input_fn = make_input_fn(test, y_eval, num_epochs=1, shuffle=False)
 
-model.compile(optimizer='adam',
-              loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-              metrics=['accuracy'])
+linear_est = tf.estimator.LinearClassifier(feature_columns=feature_columns, n_classes=100)
 
-model.fit(train_ds,
-          validation_data=val_ds,
-          epochs=500)
+linear_est.train(train_input_fn)  # train
+result = linear_est.evaluate(eval_input_fn)  # get model metrics/stats by testing on tetsing data
+
+print(result['accuracy'])  # the result variable is simply a dict of stats about our model
+
+sho = 1
