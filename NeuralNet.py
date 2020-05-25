@@ -7,6 +7,7 @@ import Regression
 import datetime
 import csv
 import re
+import matplotlib.pyplot as plt
 
 from tensorflow import feature_column
 from tensorflow.keras import layers
@@ -82,13 +83,13 @@ def processMovieCsv(names):
             genreFlags = movData[10][0].split(';')
             companiesFlags = movData[11][0].split(';')
             target = movData[13][0]
-
+            if(target == 0): continue;
             releaseDate = datetime.datetime.strptime(movData[12][0], '%Y-%m-%d')
             actorsAv = sumUpCrewData('../ActorsCsvs',actors, releaseDate)
 
             movieData = MovieData();
             setattr(movieData, 'target', int(target * 10) )
-            # setattr(movieData, 'budget', budget)
+            setattr(movieData, 'budget', budget)
             for i in range (0, actorsLen):
                 setattr(movieData, 'actorAv'+ str(i), actorsAv[i])
             for i in range(0, actorsLen):
@@ -125,14 +126,20 @@ def df_to_dataset(dataframe, shuffle=True, batch_size=32):
   ds = ds.repeat().shuffle(5000).batch(batch_size).prefetch(1)
   return ds
 
-def make_input_fn(data_df, label_df, num_epochs=10, shuffle=True, batch_size=32):
-  def input_function():  # inner function, this will be returned
-    ds = tf.data.Dataset.from_tensor_slices((dict(data_df), label_df))  # create tf.data.Dataset object with data and its label
-    if shuffle:
-      ds = ds.shuffle(1000)  # randomize order of data
-    ds = ds.batch(batch_size).repeat(num_epochs)  # split dataset into batches of 32 and repeat process for number of epochs
-    return ds  # return a batch of the dataset
-  return input_function  # return a function object for use
+def doIt_fun(data):
+    ds = tf.data.Dataset.from_tensor_slices((dict(data)))
+    ds = ds.repeat().shuffle(5000).batch(batch_size).prefetch(1)
+    return ds
+
+def input_fn(features, labels, training=True, batch_size=100):
+    # Convert the inputs to a Dataset.
+    dataset = tf.data.Dataset.from_tensor_slices((dict(features), labels))
+
+    # Shuffle and repeat if you are in training mode.
+    if training:
+        dataset = dataset.shuffle(1000).repeat()
+
+    return dataset.batch(batch_size)
 
 #createTrainData();
 dataframe = pd.read_csv("combined_csv.csv")
@@ -142,7 +149,11 @@ y_train = train.pop('target')
 y_eval = test.pop('target')
 
 #train.actorAv0.hist(bins=20)
+#train.budget.hist(bins=20)
 #y_train.hist(bins=20)
+#fig, ax = plt.subplots()
+#y_train.hist( ax=ax)
+#fig.savefig('example.png')
 NUMERIC_COLUMNS = ['actorAv0' ,'actorAv1' ,'actorAv2' ,'actorAv3' ,'actorAv4' ,'actorAv5' ,'actorAv6' ,'actorAv7' ,'actorAv8' ,'actorAv9' ,'actorPo0' ,'actorPo1' ,'actorPo2' ,'actorPo3' ,'actorPo4' ,'actorPo5' ,'actorPo6' ,'actorPo7' ,'actorPo8' ,'actorPo9' ,'crewAv0' ,'crewAv1' ,'crewAv2' ,'crewAv3' ,'crewAv4' ,'crewAv5' ,'crewAv6' ,'crewPo0' ,'crewPo1' ,'crewPo2' ,'crewPo3' ,'crewPo4' ,'crewPo5' ,'crewPo6']
 
 feature_columns = []
@@ -152,14 +163,22 @@ for feature_name in NUMERIC_COLUMNS:
 
 print(feature_columns)
 
-train_input_fn = make_input_fn(train, y_train)  # here we will call the input_function that was returned to us to get a dataset object we can feed to the model
-eval_input_fn = make_input_fn(test, y_eval, num_epochs=1, shuffle=False)
+# Build a DNN with 2 hidden layers with 30 and 10 hidden nodes each.
+classifier = tf.estimator.DNNClassifier(
+    feature_columns=feature_columns,
+    # Two hidden layers of 30 and 10 nodes respectively.
+    hidden_units=[150, 300],
+    # The model must choose between 3 classes.
+    n_classes=101)
 
-linear_est = tf.estimator.LinearClassifier(feature_columns=feature_columns, n_classes=100)
+classifier.train(
+    input_fn=lambda: input_fn(train, y_train, training=True),
+    steps=5000)
 
-linear_est.train(train_input_fn)  # train
-result = linear_est.evaluate(eval_input_fn)  # get model metrics/stats by testing on tetsing data
+eval_result = classifier.evaluate(
+    input_fn=lambda: input_fn(test, y_eval, training=False))
 
-print(result['accuracy'])  # the result variable is simply a dict of stats about our model
-
-sho = 1
+print('\nTest set accuracy: {accuracy:0.8f}\n'.format(**eval_result))
+prerRes = classifier.predict(input_fn=lambda: doIt_fun(train.iloc[[0]]))
+print(prerRes)
+print(list(prerRes))
