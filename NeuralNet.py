@@ -58,12 +58,12 @@ def sumUpCrewData(inPath, files, releaseDate):
             dataM.append(ob)
         dataM = sorted(dataM, key=lambda x: x.Date)
         recentRanks = list(filter(lambda x: x.Date <= releaseDate, dataM))
-        for i in range (0, 8):
-            recentRanks.insert(0, recentRanks[recentRanks.__len__() - 1])
-        for i in range(0, 3):
-            recentRanks.insert(0, recentRanks[recentRanks.__len__() - 2])
-        for i in range(0, 2):
-            recentRanks.insert(0, recentRanks[recentRanks.__len__() - 2])
+#        for i in range (0, 8):
+#            recentRanks.insert(0, recentRanks[recentRanks.__len__() - 1])
+ #       for i in range(0, 3):
+  #          recentRanks.insert(0, recentRanks[recentRanks.__len__() - 2])
+   #     for i in range(0, 2):
+    #        recentRanks.insert(0, recentRanks[recentRanks.__len__() - 2])
 
         avr = average(recentRanks)
         results.append(avr)
@@ -103,7 +103,6 @@ def processMovieCsv(names):
             #    setattr(movieData, 'genre' + str(i), float(genreFlags[i]))
             #for i in range(0, companiesLen):
              #   setattr(movieData, 'comp' + str(i), float(companiesFlags[i]))
-
             movies.append(movieData)
         except: continue
     return movies
@@ -119,17 +118,22 @@ def createTrainData():
         for mv in moviesModels:
             writer.writerow(mv.__dict__.values())
 
+def createPredictData(file):
+    files = ['../MoviesCsvs/' + file]
+    moviesModels = processMovieCsv(files)
+
+    with open(file, 'w', newline='', encoding='utf8') as f:
+        writer = csv.writer(f)
+        writer.writerow(moviesModels[0].__dict__.keys())
+        for mv in moviesModels:
+            writer.writerow(mv.__dict__.values())
+
 def df_to_dataset(dataframe, shuffle=True, batch_size=32):
   dataframe = dataframe.copy()
   labels = dataframe.pop('target')
   ds = tf.data.Dataset.from_tensor_slices((dict(dataframe), labels))
   ds = ds.repeat().shuffle(5000).batch(batch_size).prefetch(1)
   return ds
-
-def doIt_fun(data):
-    ds = tf.data.Dataset.from_tensor_slices((dict(data)))
-    ds = ds.repeat().shuffle(5000).batch(batch_size).prefetch(1)
-    return ds
 
 def input_fn(features, labels, training=True, batch_size=100):
     # Convert the inputs to a Dataset.
@@ -141,44 +145,68 @@ def input_fn(features, labels, training=True, batch_size=100):
 
     return dataset.batch(batch_size)
 
-#createTrainData();
-dataframe = pd.read_csv("combined_csv.csv")
+
+
+def train():
+    #createTrainData();
+    dataframe = pd.read_csv("combined_csv.csv")
+    dataframe.head()
+    train, test = train_test_split(dataframe)
+    y_train = train.pop('target')
+    y_eval = test.pop('target')
+
+    # train.actorAv0.hist(bins=20)
+    # train.budget.hist(bins=20)
+    # y_train.hist(bins=20)
+    # fig, ax = plt.subplots()
+    # y_train.hist( ax=ax)
+    # fig.savefig('example.png')
+    NUMERIC_COLUMNS = [ 'actorAv0', 'actorAv1', 'actorAv2', 'actorAv3', 'actorAv4', 'actorAv5', 'actorAv6', 'actorAv7',
+                       'actorAv8', 'actorAv9', 'actorPo0', 'actorPo1', 'actorPo2', 'actorPo3', 'actorPo4', 'actorPo5',
+                       'actorPo6', 'actorPo7', 'actorPo8', 'actorPo9', 'crewAv0', 'crewAv1', 'crewAv2', 'crewAv3',
+                       'crewAv4', 'crewAv5', 'crewAv6', 'crewPo0', 'crewPo1', 'crewPo2', 'crewPo3', 'crewPo4',
+                       'crewPo5', 'crewPo6']
+
+    feature_columns = []
+
+    for feature_name in NUMERIC_COLUMNS:
+        feature_columns.append(tf.feature_column.numeric_column(feature_name, dtype=tf.float32))
+
+    print(feature_columns)
+
+    classifier = tf.estimator.DNNClassifier(
+        feature_columns=feature_columns,
+        hidden_units=[150, 300],
+        n_classes=101)
+
+    classifier.train(
+        input_fn=lambda: input_fn(train, y_train, training=True),
+        steps=5000)
+
+    eval_result = classifier.evaluate(
+        input_fn=lambda: input_fn(test, y_eval, training=False))
+
+    print('\nTest set accuracy: {accuracy:0.8f}\n'.format(**eval_result))
+
+    return classifier
+
+
+#def predict(fileName):
+createPredictData("12YearsaSlave.csv")
+dataframe = pd.read_csv("12YearsaSlave.csv")
 dataframe.head()
-train, test = train_test_split(dataframe)
-y_train = train.pop('target')
-y_eval = test.pop('target')
+y_train = dataframe.pop('target')
+classifier = train();
+ress = {}
+prerRes = classifier.predict(input_fn=lambda: input_fn(dataframe, y_train, training=True))
+for single_prediction in prerRes:
+    numb = 0
+    for i in single_prediction['probabilities']:
+        print(str(numb) + '         ' +str(i))
+        ress[str(numb)] = str(i)
+        numb = numb + 1
+    break;
+print(ress)
+    #return ress
 
-#train.actorAv0.hist(bins=20)
-#train.budget.hist(bins=20)
-#y_train.hist(bins=20)
-#fig, ax = plt.subplots()
-#y_train.hist( ax=ax)
-#fig.savefig('example.png')
-NUMERIC_COLUMNS = ['actorAv0' ,'actorAv1' ,'actorAv2' ,'actorAv3' ,'actorAv4' ,'actorAv5' ,'actorAv6' ,'actorAv7' ,'actorAv8' ,'actorAv9' ,'actorPo0' ,'actorPo1' ,'actorPo2' ,'actorPo3' ,'actorPo4' ,'actorPo5' ,'actorPo6' ,'actorPo7' ,'actorPo8' ,'actorPo9' ,'crewAv0' ,'crewAv1' ,'crewAv2' ,'crewAv3' ,'crewAv4' ,'crewAv5' ,'crewAv6' ,'crewPo0' ,'crewPo1' ,'crewPo2' ,'crewPo3' ,'crewPo4' ,'crewPo5' ,'crewPo6']
-
-feature_columns = []
-
-for feature_name in NUMERIC_COLUMNS:
-  feature_columns.append(tf.feature_column.numeric_column(feature_name, dtype=tf.float32))
-
-print(feature_columns)
-
-# Build a DNN with 2 hidden layers with 30 and 10 hidden nodes each.
-classifier = tf.estimator.DNNClassifier(
-    feature_columns=feature_columns,
-    # Two hidden layers of 30 and 10 nodes respectively.
-    hidden_units=[150, 300],
-    # The model must choose between 3 classes.
-    n_classes=101)
-
-classifier.train(
-    input_fn=lambda: input_fn(train, y_train, training=True),
-    steps=5000)
-
-eval_result = classifier.evaluate(
-    input_fn=lambda: input_fn(test, y_eval, training=False))
-
-print('\nTest set accuracy: {accuracy:0.8f}\n'.format(**eval_result))
-prerRes = classifier.predict(input_fn=lambda: doIt_fun(train.iloc[[0]]))
-print(prerRes)
-print(list(prerRes))
+   # return prerRes;

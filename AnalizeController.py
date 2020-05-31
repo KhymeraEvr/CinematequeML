@@ -1,5 +1,7 @@
 import flask
 import Regression
+import NeuralNet
+import json
 
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True
@@ -12,5 +14,11 @@ def regres(filename):
     resultString = str(result).strip('[]')
 
     return resultString
+
+@app.route('/NN/<filename>', methods=['GET'])
+def predictMovie(filename):
+    result = NeuralNet.predict(filename)
+    print(result)
+    return result
 
 app.run()

@@ -76,7 +76,3 @@ class Regres:
         result = self.polymonial( len(self.X) )
 
         return result
-
-serv = Regres('AlexHydeWhite.csv')
-result = serv.predictValue();
-resultString = str(result).strip('[]')
